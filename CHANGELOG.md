@@ -26,7 +26,7 @@ recorded under `[Planned]`. The in-app **What's new** tab reads this file direct
 ### Changed
 
 - Suggested answers are now detailed, question-specific starting points; the arrow on a suggestion submits that answer immediately.
-- `npm test` now syntax-checks the browser specification before running the unit and API suites, so a broken browser test fails fast instead of silently skipping.
+- `npm test` now syntax-checks the browser specification before running the unit and API suites, so a broken browser test fails fast instead of silently skipping. CI also surfaces each failing browser test as a check annotation.
 - Delivery gates, review areas, and the Markdown handoff adapt to whether change management is enabled for the engagement.
 - Workspace schema v13 migrates v12 workspaces in place; records that were reviewed under the previous mandatory Prosci gates keep those gates.
 
