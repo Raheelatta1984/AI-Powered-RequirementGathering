@@ -145,7 +145,7 @@ test('what’s new, live progress, and inviting a stakeholder mid-engagement', a
   await expect(page.locator('.progress-person')).toHaveCount(2);
 
   await page.goto('/#/whats-new');
-  await expect(page.getByRole('heading', { name: 'What's new.', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: "What's new.", exact: true })).toBeVisible();
   await expect(page.getByText('Nothing changes silently.')).toBeVisible();
   await page.getByRole('button', { name: 'Planned', exact: true }).click();
   await expect(page.getByText('Planned').first()).toBeVisible();
