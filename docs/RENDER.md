@@ -98,7 +98,7 @@ Then verify:
 
 ## Still failing?
 
-- **Token error:** the variable is missing, shorter than 24 characters, or set on the wrong service/environment group.
+- **Token error:** the variable is missing/empty, shorter than 24 characters, or set on the wrong service/environment group. Newer startup errors report whether the runtime value was empty or how many characters were received, without logging the secret itself. If the variable exists in Render, confirm the deploy started **after** saving it and that it belongs to the deployed service/environment.
 - **Secure-cookie error:** set `SECURE_COOKIES=true`; use the HTTPS Render URL.
 - **Port scan timeout:** start command must be `npm start`; do not override `PORT` with an unexposed value.
 - **403 on save/login:** check `PUBLIC_ORIGIN` exactly matches the browser origin, without a trailing slash.
