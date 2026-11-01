@@ -1,0 +1,10 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createStore } from '../server/store.mjs';
+import { createApp } from '../server/app.mjs';
+const dir = await mkdtemp(join(tmpdir(), 'clarity-browser-'));
+const store = await createStore(dir);
+const app = createApp(store, { accessToken: '' });
+const server = app.listen(3001, '0.0.0.0', () => console.log('Browser test workspace ready on 3001'));
+process.on('SIGTERM', () => server.close(async () => { await rm(dir, { recursive: true, force: true }); process.exit(0); }));
