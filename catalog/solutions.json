@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "description": "Versioned solution registry. Entries are evidence-backed, not inferred company projects. Replace or extend with your organisation's actual inventory.",
+  "solutions": [
+    {
+      "id": "clarity-ba-workspace",
+      "name": "Clarity · AI BA workspace",
+      "category": "Business analysis",
+      "version": "12.0.0",
+      "owner": "Repository maintainer",
+      "status": "In development",
+      "description": "Stakeholder elicitation, validation, change assessment, and governed Markdown handoff.",
+      "repository": "Raheelatta1984/AI-Powered-RequirementGathering",
+      "sourcePath": "README.md",
+      "systems": ["Interview workspace", "Solution registry", "Markdown handoff"],
+      "tags": ["Requirements", "Stakeholder engagement", "Governance"]
+    },
+    {
+      "id": "requirements-v11-specification",
+      "name": "Requirements Gathering Tool v11",
+      "category": "Specification only",
+      "version": "11.0",
+      "owner": "Repository maintainer",
+      "status": "Documentation only",
+      "description": "Original standalone-tool specification. The referenced HTML and Windows setup files are not present in this repository; this is not a deployed solution.",
+      "repository": "Raheelatta1984/AI-Powered-RequirementGathering",
+      "sourcePath": "readthis.md",
+      "systems": ["Specification and implementation guide"],
+      "tags": ["Legacy specification", "Not deployed"]
+    }
+  ]
+}

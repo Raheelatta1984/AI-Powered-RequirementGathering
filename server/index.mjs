@@ -1,0 +1,13 @@
+import { createStore } from './store.mjs';
+import { createApp } from './app.mjs';
+import { seedDemo } from './demo.mjs';
+const production = process.env.NODE_ENV === 'production';
+const token = process.env.WORKSPACE_ACCESS_TOKEN || '';
+if (production && token.length < 24) throw new Error('Production requires WORKSPACE_ACCESS_TOKEN with at least 24 characters. See .env.example and docs/DEPLOYMENT.md.');
+if (production && process.env.SECURE_COOKIES !== 'true') throw new Error('Production requires HTTPS and SECURE_COOKIES=true.');
+const seed = !production && process.env.SEED_DEMO !== 'false' ? seedDemo : undefined;
+const store = await createStore(process.env.DATA_DIR || './data', seed);
+const app = createApp(store);
+const port = Number(process.env.PORT || 3000); const host = process.env.HOST || '0.0.0.0';
+const server = app.listen(port, host, () => console.log(`Clarity workspace listening on ${host}:${port} · ${token ? 'protected workspace' : 'local demo workspace'} · ${process.env.ANTHROPIC_API_KEY ? 'AI enabled' : 'guided mode'}`));
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => server.close(() => process.exit(0)));
