@@ -20,10 +20,18 @@ The first three active stages are derived from evidence, not a freely editable s
 
 1. `interviewing`: at least one roster member has not completed and confirmed all phases.
 2. `validating`: all interviews are complete, but checks have not all been answered and resolved.
-3. `review`: verification is complete; named review approvals and the change plan are still required for export.
+3. `review`: verification is complete; the business, technical, and security review approvals are still required for export, plus any optional change-management gate that is switched on.
 4. `delivered`: a gated artifact exists; evidence, reviews, and interviews are locked in the application.
 
 The roster locks at creation. There is no “remove incomplete stakeholder” shortcut. A BA can reopen a completed interview with a specific question; prior responses remain, checks are archived, approvals are cleared, and the full gate must pass again. Unknown/skipped responses count as explicit elicitation outcomes, not invented requirements. They remain open decisions in the handoff.
+
+## Optional master setup
+
+`server/settings.mjs` defines the workspace defaults; `workspace.json` holds them under `settings`. New engagements copy `changeManagement` and `interviewSettings` into the record, so an established engagement is never retroactively re-gated. `gateReasons`, `reviewAreas`, `requiredReviewAreas`, and `saveChangePlan` read the engagement-level copy only. A v12 workspace is migrated in place (schema 13) with change management fully enabled, preserving the gates its approvals were recorded against.
+
+## Elaboration and pacing
+
+`server/elaborate.mjs` builds the deterministic detailed statement and the explicit gap list. `server/ai.mjs` offers an AI elaboration with a numeral guard: an expansion that introduces a number the stakeholder did not supply falls back to the guided version. `server/progress.mjs` derives per-stakeholder progress, pacing, activity state, and reminder eligibility; presence heartbeats use a store mutation that does **not** increment the record revision.
 
 ## Interview engine
 
