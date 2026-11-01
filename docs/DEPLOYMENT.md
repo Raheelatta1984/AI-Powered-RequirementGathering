@@ -14,10 +14,10 @@ The first development start creates illustrative records unless `SEED_DEMO=false
 
 ## Protected deployment
 
-1. Use Node.js 22+ and install with `npm ci`.
+1. Use Node.js 22.x (pinned in `.node-version`) and install with `npm ci`.
 2. Build with `npm run build`.
 3. Set a strong, unique `WORKSPACE_ACCESS_TOKEN` (at least 24 characters; preferably a randomly generated secret of 32+ bytes).
-4. Terminate HTTPS at a trusted reverse proxy. Set `SECURE_COOKIES=true`.
+4. Terminate HTTPS at a trusted reverse proxy. Secure cookies default on in production; set `SECURE_COOKIES=true` explicitly if your environment overrides defaults.
 5. Set `PUBLIC_ORIGIN` to the exact external origin, without a trailing slash, when the proxy changes Host/origin handling.
 6. Set `TRUST_PROXY_HOPS` only to the number of trusted proxy hops you control. Do not blindly trust arbitrary forwarded headers.
 7. Persist `DATA_DIR` on a protected volume. Run as a non-root service account. Back up the store and test restoration.
@@ -32,7 +32,11 @@ DATA_DIR='/var/lib/clarity' \
 node server/index.mjs
 ```
 
-Production startup fails without a sufficiently strong passphrase or secure-cookie configuration. The passphrase protects BA endpoints; stakeholders use their own private links. This is a shared single-workspace passphrase, not individual enterprise identity. Put an identity-aware proxy/SSO in front if attributable BA login is required. Reviewer names in the app are attestations entered by the BA, not authenticated reviewer accounts.
+Production startup fails without a sufficiently strong passphrase or if secure cookies are disabled. Configuration problems are reported together without logging secret values. The passphrase protects BA endpoints; stakeholders use their own private links. This is a shared single-workspace passphrase, not individual enterprise identity. Put an identity-aware proxy/SSO in front if attributable BA login is required. Reviewer names in the app are attestations entered by the BA, not authenticated reviewer accounts.
+
+## Render
+
+See [RENDER.md](RENDER.md) for the exact dashboard variables, health check, Node pin, and persistent-disk blueprint. Render supplies `NODE_ENV=production` and `PORT`; Clarity reads both. A free Render instance is ephemeral and must not be used for real interview records.
 
 ## Environment variables
 
@@ -42,8 +46,8 @@ Production startup fails without a sufficiently strong passphrase or secure-cook
 | `HOST` | `0.0.0.0` | Bind address for containers/previews |
 | `DATA_DIR` | `./data` | Persistent workspace JSON and signing secret |
 | `WORKSPACE_ACCESS_TOKEN` | empty | BA passphrase; required in production |
-| `SECURE_COOKIES` | `false` | Must be `true` in production behind HTTPS |
-| `PUBLIC_ORIGIN` | request host | Exact allowed mutation origin when configured |
+| `SECURE_COOKIES` | `true` in production, `false` in development | Production rejects `false`; use HTTPS |
+| `PUBLIC_ORIGIN` | `RENDER_EXTERNAL_URL` origin on Render, otherwise request host | Exact allowed mutation origin when configured |
 | `TRUST_PROXY_HOPS` | `0` | Trusted reverse-proxy hops; configure conservatively |
 | `SEED_DEMO` | enabled in development | `false` disables initial examples |
 | `ANTHROPIC_API_KEY` | empty | Optional server-side Claude access |

@@ -3,7 +3,7 @@
 ## Implemented safeguards
 
 - **Server-side secrets:** Anthropic and optional GitHub credentials never enter frontend bundles or engagement exports.
-- **Workspace access:** production requires a strong passphrase and secure cookies. Login uses a signed, expiring, HttpOnly, SameSite=Strict cookie and timing-safe secret comparison. Login attempts are rate-limited.
+- **Workspace access:** production requires a strong passphrase and secure cookies (enabled by default in production). Login uses a signed, expiring, HttpOnly, SameSite=Strict cookie and timing-safe secret comparison. Login attempts are rate-limited.
 - **Interview isolation:** 256-bit random invite tokens; only hashes persisted; 90-day expiry; explicit rotation; stakeholder endpoints scoped to the token’s person. Other raw transcripts are not returned to an interview participant. Post-completion verification intentionally includes attributed statements needed for comparison.
 - **Mutation boundaries:** same-origin checks, JSON-only request bodies, bounded input sizes, schema validation, and optimistic revisions. A stale browser cannot silently overwrite a newer answer or approval.
 - **Gate integrity:** completion, verification, change-plan, and review conditions are checked on the server. The UI is not the security boundary. Generated artifacts are application-locked and hashed.

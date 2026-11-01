@@ -5,7 +5,7 @@
   "type": "module",
   "description": "AI-led business analysis, stakeholder interviews, and governed solution handoffs",
   "engines": {
-    "node": ">=22"
+    "node": "22.x"
   },
   "scripts": {
     "dev": "node --watch server/index.mjs",

@@ -1,0 +1,43 @@
+# Persistent Render blueprint for Clarity.
+# This uses a PAID Starter instance plus a 1 GB persistent disk. Review Render pricing
+# before applying. Free web services cannot attach disks and lose local data on restart.
+# For an existing service, set the same environment variables in the Dashboard instead;
+# adding this file alone does not reconfigure a manually created service.
+services:
+  - type: web
+    name: clarity-ai-ba
+    runtime: node
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    disk:
+      name: clarity-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.22.3
+      - key: HOST
+        value: 0.0.0.0
+      - key: SECURE_COOKIES
+        value: "true"
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      - key: DATA_DIR
+        value: /var/data/clarity
+      - key: SEED_DEMO
+        value: "false"
+      # Render generates a 256-bit secret once if the variable does not already exist.
+      # Retrieve it from the Render environment to sign in; never commit it to Git.
+      - key: WORKSPACE_ACCESS_TOKEN
+        generateValue: true
+      # Optional. Set in the Render Dashboard to enable Claude; guided mode works without it.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Optional custom domain origin, e.g. https://requirements.example.org (no trailing slash).
+      # If omitted, Clarity uses RENDER_EXTERNAL_URL for the onrender.com origin.
+      - key: PUBLIC_ORIGIN
+        sync: false
