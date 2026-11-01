@@ -15,9 +15,10 @@ const equal = (a, b) => { const x = createHash('sha256').update(String(a)).diges
 const sign = (value, secret) => createHmac('sha256', secret).update(value).digest('hex');
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
 export function createApp(store, options = {}) {
-  const app = express(); app.disable('x-powered-by'); const proxyHops = Number(process.env.TRUST_PROXY_HOPS || 0); if (Number.isInteger(proxyHops) && proxyHops > 0) app.set('trust proxy', proxyHops);
+  const app = express(); app.disable('x-powered-by'); const proxyHops = options.proxyHops ?? Number(process.env.TRUST_PROXY_HOPS || 0); if (Number.isInteger(proxyHops) && proxyHops > 0) app.set('trust proxy', proxyHops);
   const accessToken = options.accessToken ?? process.env.WORKSPACE_ACCESS_TOKEN ?? '';
   const secureCookies = options.secureCookies ?? process.env.SECURE_COOKIES === 'true';
+  const publicOrigin = options.publicOrigin ?? process.env.PUBLIC_ORIGIN ?? '';
   const secret = store.snapshot().secret;
   app.use((req, res, next) => {
     res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Permissions-Policy': 'microphone=(self), camera=(), geolocation=()', 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" });
@@ -26,7 +27,7 @@ export function createApp(store, options = {}) {
   app.use(express.json({ limit: '160kb' }));
   app.use('/api', (req, res, next) => {
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.headers.origin) {
-      try { if (new URL(req.headers.origin).origin !== (process.env.PUBLIC_ORIGIN || new URL(req.headers.origin).protocol + '//' + req.get('host'))) return res.status(403).json({ error: 'Cross-origin changes are not allowed.' }); } catch { return res.status(403).json({ error: 'Invalid request origin.' }); }
+      try { if (new URL(req.headers.origin).origin !== (publicOrigin || new URL(req.headers.origin).protocol + '//' + req.get('host'))) return res.status(403).json({ error: 'Cross-origin changes are not allowed.' }); } catch { return res.status(403).json({ error: 'Invalid request origin.' }); }
     }
     next();
   });

@@ -6,9 +6,13 @@ Clarity helps a BA or senior BA lead frame a new solution or a change to an exis
 
 > The original repository contained `readthis.md`, a README, and a license—not the HTML application, setup script, or other deliverables described by the guide. This release implements the missing application. The original guide is preserved unchanged; see [the v11 → v12 mapping](docs/V11_TO_V12.md).
 
+## Deploying to Render?
+
+See the [Render deployment guide](docs/RENDER.md). The common startup failure is a missing `WORKSPACE_ACCESS_TOKEN` in the Render environment; the repository also includes a persistent-disk [`render.yaml`](render.yaml) blueprint.
+
 ## Start locally
 
-Requires **Node.js 22+** and npm.
+Requires **Node.js 22.x** and npm (pinned in `.node-version`).
 
 ```bash
 npm ci
@@ -78,7 +82,7 @@ npm run catalog:sync
 
 ## Important boundaries
 
-This is a **single-workspace application**, not a multi-tenant enterprise identity platform. The unauthenticated development mode is for demonstration and non-sensitive data only. Production requires a strong workspace passphrase and HTTPS; see [deployment](docs/DEPLOYMENT.md) and [security](docs/SECURITY.md). Reviewer names are recorded attestations, not SSO-verified identities. Storage encryption, organisational retention, SSO, and production monitoring belong to the deployment environment.
+This is a **single-workspace application**, not a multi-tenant enterprise identity platform. The unauthenticated development mode is for demonstration and non-sensitive data only. Production requires a strong workspace passphrase and HTTPS (secure cookies default on in production); see [deployment](docs/DEPLOYMENT.md) and [security](docs/SECURITY.md). Reviewer names are recorded attestations, not SSO-verified identities. Storage encryption, organisational retention, SSO, and production monitoring belong to the deployment environment.
 
 The app does not send email, reserve external calendars, inspect a live production estate, generate code, deploy a solution, or perform a penetration test. Binary Word/PDF attachments and v11’s six guaranteed voice personas are not implemented; text evidence and device-available browser voices are supported. Outputs are English. These boundaries are deliberate and documented rather than presented as completed integrations.
 
@@ -98,6 +102,7 @@ The browser suite starts an isolated temporary workspace on port 3001. It does n
 
 - [Architecture and state transitions](docs/ARCHITECTURE.md)
 - [Deployment and configuration](docs/DEPLOYMENT.md)
+- [Render deployment and startup troubleshooting](docs/RENDER.md)
 - [Security and privacy boundaries](docs/SECURITY.md)
 - [Prosci-informed change assessment](docs/PROSCI_CHANGE.md)
 - [What changed from `readthis.md`](docs/V11_TO_V12.md)
