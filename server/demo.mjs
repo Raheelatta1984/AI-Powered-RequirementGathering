@@ -1,5 +1,6 @@
 import { createEngagement, saveAnswer, completeInterview, issueInvite } from './domain.mjs';
 import { nextQuestion } from './questions.mjs';
+import { defaultWorkspaceSettings } from './settings.mjs';
 const availability = [1, 2, 3, 4, 5].map(day => ({ day, start: '09:00', end: '16:00' }));
 const samples = {
   'business-driver': 'Example: Customer onboarding requests are handed between three teams. The business owner wants a single intake and clear ownership before the next intake review.',
@@ -39,15 +40,23 @@ function respond(e, person, count) {
     saveAnswer(e, person, { questionId: q.id, text: samples[q.key] || 'Example: This needs confirmation from the accountable owner. The BA should obtain supporting evidence before making a delivery commitment.', disposition: 'answered', priority: q.phaseIndex === 9 ? 'Must have' : 'Should have', expectedVersion: e.revision }); e.revision++;
   }
 }
-export function seedDemo(catalog) {
+export function seedDemo(catalog, settings = defaultWorkspaceSettings()) {
   const startDate = new Date().toISOString().slice(0, 10);
   const common = { startDate, sessionMinutes: 30, owner: 'Alex Morgan', objectives: 'Reduce avoidable onboarding effort and make request ownership visible.', constraints: 'Supported technology; confirm blackout periods and budget before delivery.' };
   const e = createEngagement({ ...common, title: 'Customer onboarding hub', type: 'new', problem: 'Bring customer request intake, approval, and status into one clear workflow, with evidence-led requirements from every impacted function.', scopeIn: 'Request intake, approval routing, status visibility, and audit history.', scopeOut: 'Payments, mobile applications, and replacing the customer system of record.', stakeholders: [
     { name: 'Olivia Chen', role: 'Operations director', function: 'Business', email: '', timezone: 'Australia/Sydney', availability },
     { name: 'Liam Patel', role: 'Integration lead', function: 'Technology', email: '', timezone: 'Australia/Sydney', availability },
     { name: 'Priya Shah', role: 'Security partner', function: 'Security', email: '', timezone: 'Australia/Sydney', availability },
-  ] }, catalog, [], true);
+  ] }, catalog, [], true, settings);
   e.stakeholders.forEach(p => issueInvite(e, p)); respond(e, e.stakeholders[0], 60); completeInterview(e, e.stakeholders[0], e.revision, true); e.revision++; respond(e, e.stakeholders[1], 12);
-  const existing = createEngagement({ ...common, title: 'A stronger requirements handoff', type: 'existing', solutionId: catalog.find(s => s.id === 'clarity-ba-workspace')?.id, baseline: 'The current repository implementation provides guided interviews, a completion gate, and a Markdown handoff. This example does not assert a production deployment.', desiredChange: 'Assess an improvement to the handoff experience, including downstream implementation traceability and adoption by BA leads.', problem: 'Explore a traceable improvement to the current Clarity workspace without losing stakeholder evidence or bypassing review.', scopeIn: 'Requirements handoff and implementation traceability.', scopeOut: 'Automated code deployment and production data migration.', stakeholders: [{ name: 'Alex Morgan', role: 'Senior BA lead', function: 'Business', email: '', timezone: 'Australia/Sydney', availability }] }, catalog, e.stakeholders.flatMap(p => p.schedule), true);
+  // Illustrative pacing and presence so the progress board and reminders have something to show.
+  const [olivia, liam, priya] = e.stakeholders;
+  olivia.timeBudget = { minutes: 45, setAt: new Date(Date.now() - 3 * 86400000).toISOString() };
+  liam.timeBudget = { minutes: 30, setAt: new Date(Date.now() - 3600000).toISOString() };
+  liam.startedAt = new Date(Date.now() - 90 * 60000).toISOString();
+  liam.lastSeenAt = new Date(Date.now() - 45 * 60000).toISOString();
+  liam.activity = { status: 'active', note: '', updatedAt: liam.lastSeenAt, breakUntil: null };
+  priya.activity = { status: 'on-break', note: 'Back after the leadership briefing', updatedAt: new Date().toISOString(), breakUntil: new Date(Date.now() + 20 * 60000).toISOString() };
+  const existing = createEngagement({ ...common, title: 'A stronger requirements handoff', type: 'existing', solutionId: catalog.find(s => s.id === 'clarity-ba-workspace')?.id, baseline: 'The current repository implementation provides guided interviews, a completion gate, and a Markdown handoff. This example does not assert a production deployment.', desiredChange: 'Assess an improvement to the handoff experience, including downstream implementation traceability and adoption by BA leads.', problem: 'Explore a traceable improvement to the current Clarity workspace without losing stakeholder evidence or bypassing review.', scopeIn: 'Requirements handoff and implementation traceability.', scopeOut: 'Automated code deployment and production data migration.', stakeholders: [{ name: 'Alex Morgan', role: 'Senior BA lead', function: 'Business', email: '', timezone: 'Australia/Sydney', availability }] }, catalog, e.stakeholders.flatMap(p => p.schedule), true, settings);
   existing.stakeholders.forEach(p => issueInvite(existing, p)); return [e, existing];
 }

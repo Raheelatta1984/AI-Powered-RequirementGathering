@@ -1,0 +1,28 @@
+name: Changelog entry
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - name: Require a CHANGELOG.md entry
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          node scripts/check-changelog.mjs --base "$BASE_REF" --head HEAD

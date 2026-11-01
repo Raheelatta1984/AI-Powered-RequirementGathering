@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ADKAR_KEYS, PROSCI_PHASES } from './settings.mjs';
 
 export const FUNCTIONS = ['Business', 'Operations', 'Technology', 'Security', 'Risk & compliance', 'Change & adoption', 'Customer / end user', 'Finance'];
 export const PRIORITIES = ['Must have', 'Should have', 'Could have', "Won't have this release"];
@@ -25,8 +26,35 @@ export const engagementInput = z.object({
 });
 export const answerInput = z.object({
   questionId: text(120).min(1), text: text(6000).default(''), disposition: z.enum(['answered', 'unknown', 'skipped', 'out-of-scope']).default('answered'),
-  priority: z.enum(PRIORITIES).default('Should have'), expectedVersion: z.number().int().nonnegative(), continueEarly: z.boolean().optional(),
+  // MoSCoW is auto-adjusted from the question; a stakeholder may still override it.
+  priority: z.enum(PRIORITIES).optional(), prioritySource: z.enum(['auto', 'stakeholder']).default('auto'),
+  expectedVersion: z.number().int().nonnegative(), continueEarly: z.boolean().optional(),
 }).superRefine((v, ctx) => { if (v.disposition !== 'unknown' && v.disposition !== 'skipped' && !v.text.trim()) ctx.addIssue({ code: 'custom', path: ['text'], message: 'Add an answer, or explicitly choose I don’t know' }); });
+export const detailInput = z.object({ text: text(3000).min(20), expectedVersion: z.number().int().nonnegative() });
+export const timeBudgetInput = z.object({ minutes: z.union([z.literal(15), z.literal(30), z.literal(45), z.literal(60), z.null()]), expectedVersion: z.number().int().nonnegative() });
+export const activityInput = z.object({
+  status: z.enum(['active', 'paused', 'on-break', 'resume']), note: text(300).default(''), minutes: z.union([z.literal(15), z.literal(30), z.literal(60)]).default(15),
+  expectedVersion: z.number().int().nonnegative().optional(),
+});
+export const reminderInput = z.object({ message: text(500).default(''), expectedVersion: z.number().int().nonnegative() });
+export const changeManagementInput = z.object({
+  enabled: z.boolean().default(false),
+  adkar: z.object(Object.fromEntries(ADKAR_KEYS.map(key => [key, z.boolean().default(true)]))).default({}),
+  phases: z.object(Object.fromEntries(PROSCI_PHASES.map(key => [key, z.boolean().default(true)]))).default({}),
+  changeReview: z.boolean().default(false),
+});
+export const changeManagementPatch = z.object({
+  expectedVersion: z.number().int().nonnegative(), enabled: z.boolean().optional(),
+  adkar: z.object(Object.fromEntries(ADKAR_KEYS.map(key => [key, z.boolean().optional()]))).optional(),
+  phases: z.object(Object.fromEntries(PROSCI_PHASES.map(key => [key, z.boolean().optional()]))).optional(),
+  changeReview: z.boolean().optional(),
+});
+export const workspaceSettingsInput = z.object({
+  changeManagement: changeManagementInput.default({}),
+  reminders: z.object({ auto: z.boolean().default(true), idleMinutes: z.number().int().min(5).max(240).default(20), maxPerDay: z.number().int().min(1).max(10).default(3), cooldownMinutes: z.number().int().min(15).max(1440).default(120) }).default({}),
+  interview: z.object({ askTimeBudget: z.boolean().default(true), timeBudgetMinutes: z.union([z.literal(15), z.literal(30), z.literal(45), z.literal(60)]).default(30), parallelSittings: z.boolean().default(true) }).default({}),
+});
+export const stakeholderAddInput = stakeholderInput.extend({ sessionMinutes: z.union([z.literal(15), z.literal(30), z.literal(45), z.literal(60)]).optional() });
 export const reviewInput = z.object({
   area: z.enum(['business', 'technical', 'security', 'change']), reviewer: text(100).min(2), role: text(120).min(2),
   decision: z.enum(['approved', 'changes-requested']), notes: text(4000).default(''), expectedVersion: z.number().int().nonnegative(),

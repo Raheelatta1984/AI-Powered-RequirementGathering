@@ -8,6 +8,7 @@ export async function api(path, options = {}) {
 export function useRoute() { const read = () => window.location.hash.replace(/^#\/?/, '') || 'overview'; const [route, setRoute] = useState(read); useEffect(() => { const fn = () => { setRoute(read()); window.scrollTo(0, 0); }; window.addEventListener('hashchange', fn); return () => window.removeEventListener('hashchange', fn); }, []); return route; }
 export const navigate = route => { window.location.hash = `/${route}`; };
 export const cx = (...values) => values.filter(Boolean).join(' ');
+export const plainText = value => String(value || '').replace(/\*\*|__|`/g, '').replace(/^#{1,6}\s*/gm, '').trim();
 export function formatDate(value, options = {}) { if (!value) return 'Not scheduled'; return new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', ...options }).format(new Date(value)); }
 export function formatDay(value, timezone) { return new Intl.DateTimeFormat('en-AU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: timezone }).format(new Date(value)); }
 export function formatTime(value, timezone) { return new Intl.DateTimeFormat('en-AU', { hour: 'numeric', minute: '2-digit', timeZone: timezone }).format(new Date(value)); }

@@ -2,15 +2,28 @@
 
 Clarity supports the people side of a new or existing solution change. It references public Prosci frameworks; it is **not Prosci-certified, licensed, or a replacement for an organisation’s change practitioner or assessment tools**.
 
+## Optional by default
+
+Change management is **off by default**. At this stage the people side is not mandatory for a requirements handoff, so the workspace provides a master setup (Workspace settings → Master setup) and a per-engagement control (Change plan tab) with:
+
+- A master `enabled` switch — when off, there is no sponsor, impact, ADKAR, or people-and-adoption gate, and the change plan is read-only history.
+- Three individually optional Prosci processes: **Prepare Approach**, **Manage Change**, **Sustain Outcomes**.
+- Five individually optional ADKAR outcomes: **Awareness**, **Desire**, **Knowledge**, **Ability**, **Reinforcement**.
+- An optional **people-and-adoption review** area. Business, technical, and security reviews always apply.
+
+An enabled-but-off element is recorded as an explicit omission in the handoff; it is never implied to be complete. Changing any of these settings invalidates prior review approvals so people-side decisions cannot drift away from the requirements record.
+
+New engagements copy the workspace defaults. Existing engagements keep their own setup, and records created before this option existed retain the mandatory gates they were reviewed against (see [v12 → v13](V12_TO_V13.md)).
+
 ## Framework basis
 
 The Prosci ADKAR model describes five individual change outcomes: Awareness, Desire, Knowledge, Ability, and Reinforcement. [1](https://www.prosci.com/blog/adkar-model)
 
 Prosci’s organisational process is described as Prepare Approach, Manage Change, and Sustain Outcomes. [5](https://www.prosci.com/change-management)
 
-## Required change record
+## Change record (only when enabled)
 
-Before a handoff can be generated, the BA records:
+When change management is enabled, the BA records — for the elements that are switched on:
 
 - A named accountable sponsor.
 - Impacted groups and the nature of the current-to-future change.
@@ -44,4 +57,4 @@ A catalog entry is not evidence of production deployment. Specification-only rec
 - **Manage Change:** deliver the ADKAR actions; coordinate sponsor/manager engagement, communications, training, coaching, and resistance management.
 - **Sustain Outcomes:** review adoption and business measures, collect feedback, correct gaps, recognise desired behaviours, and transfer reinforcement to operational owners.
 
-Changing the saved plan invalidates earlier review approvals. A change review must approve the current plan before export. This keeps the people-side plan aligned with the technical and requirements handoff rather than treating adoption as an afterthought.
+Changing the saved plan invalidates earlier review approvals. When the people-and-adoption review is enabled it must approve the current plan before export; otherwise the plan is included for information only. This keeps the people-side plan aligned with the technical and requirements handoff rather than treating adoption as an afterthought.

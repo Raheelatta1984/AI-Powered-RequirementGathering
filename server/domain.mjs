@@ -1,32 +1,49 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
-import { engagementInput, answerInput, reviewInput, changePlanInput } from './schema.mjs';
+import { engagementInput, answerInput, reviewInput, changePlanInput, changeManagementPatch, stakeholderAddInput, timeBudgetInput, activityInput, detailInput, reminderInput } from './schema.mjs';
 import { scheduleRoster } from './scheduler.mjs';
-import { PHASES, PART_PHASES, nextQuestion, interviewProgress } from './questions.mjs';
+import { PHASES, PART_PHASES, nextQuestion, interviewProgress, suggestPriority, strongestPriority } from './questions.mjs';
+import { defaultWorkspaceSettings, mergeChangeManagement, changeManagementOf, ADKAR_KEYS } from './settings.mjs';
+import { elaborateGuided } from './elaborate.mjs';
+import { buildReminder, reminderMessage, stakeholderProgress } from './progress.mjs';
 
 export class AppError extends Error { constructor(message, status = 400) { super(message); this.status = status; } }
 export const assert = (condition, message, status = 400) => { if (!condition) throw new AppError(message, status); };
 export const hashToken = token => createHash('sha256').update(token).digest('hex');
 export const newToken = () => randomBytes(32).toString('base64url');
 const stamp = () => new Date().toISOString();
+const today = () => new Date().toISOString().slice(0, 10);
 export function audit(e, action, actor = 'BA lead', details = {}) { e.audit.push({ id: randomUUID(), at: stamp(), action, actor, ...details }); }
 export function version(e, expected) { assert(e.revision === expected, 'This record changed in another window. Refresh before continuing.', 409); }
 export function publicPerson(person) { const { tokenHash, pendingQuestion, ...safe } = person; return safe; }
 export function publicEngagement(e) { return { ...e, stakeholders: e.stakeholders.map(publicPerson) }; }
 export function occupiedSlots(engagements, exceptId) { return engagements.filter(e => e.id !== exceptId && e.status !== 'delivered').flatMap(e => e.stakeholders.filter(p => p.status !== 'completed').flatMap(p => p.schedule)); }
-export function createEngagement(raw, catalog, occupied = [], isExample = false) {
+
+export function personDefaults() {
+  return {
+    status: 'invited', responses: [], questions: [], reopenedQuestions: [], summaryConfirmed: false, completedAt: null,
+    timeBudget: null, startedAt: null, lastSeenAt: null, reminders: [],
+    activity: { status: 'not-started', note: '', updatedAt: null, breakUntil: null },
+  };
+}
+
+export function createEngagement(raw, catalog, occupied = [], isExample = false, settings = defaultWorkspaceSettings()) {
   const input = engagementInput.parse(raw);
   const solution = input.type === 'existing' ? catalog.find(s => s.id === input.solutionId) : null;
   assert(input.type !== 'existing' || solution, 'The selected solution is no longer in the catalog.');
   assert(!solution || solution.status !== 'Documentation only', 'A specification-only entry is not a deployed solution. Choose an actual solution or add its verified inventory record.');
   const roster = scheduleRoster(input.stakeholders.map(p => ({ ...p, id: randomUUID() })), input.startDate, input.sessionMinutes, occupied);
+  const workspace = settings?.changeManagement ? settings : defaultWorkspaceSettings();
   const e = {
-    id: `ENG-${randomBytes(4).toString('hex').toUpperCase()}`, schemaVersion: 12, revision: 0,
+    id: `ENG-${randomBytes(4).toString('hex').toUpperCase()}`, schemaVersion: 13, revision: 0,
     ...input, solutionSnapshot: solution ? structuredClone(solution) : null, isExample,
     createdAt: stamp(), updatedAt: stamp(), status: 'interviewing', validationPrepared: false,
-    stakeholders: roster.map(p => ({ ...p, tokenHash: '', status: 'invited', responses: [], questions: [], reopenedQuestions: [], summaryConfirmed: false, completedAt: null })),
+    // Optional master setup, copied from the workspace defaults and adjustable per engagement.
+    changeManagement: mergeChangeManagement(workspace.changeManagement, null),
+    interviewSettings: { ...(workspace.interview || {}) },
+    stakeholders: roster.map(p => ({ ...p, ...personDefaults(), tokenHash: '' })),
     validations: [], validationHistory: [], reviews: [], changePlan: emptyChangePlan(), artifacts: [], audit: [],
   };
-  audit(e, 'Engagement created; roster locked and sittings scheduled', 'BA lead', { stakeholderCount: roster.length });
+  audit(e, 'Engagement created; roster locked and sittings scheduled', 'BA lead', { stakeholderCount: roster.length, changeManagement: e.changeManagement.enabled });
   return e;
 }
 export function issueInvite(e, person) { const token = newToken(); person.tokenHash = hashToken(token); person.inviteExpiresAt = new Date(Date.now() + 90 * 86400000).toISOString(); audit(e, 'Private interview link issued or rotated', 'BA lead', { stakeholderId: person.id }); return token; }
@@ -40,23 +57,56 @@ export function stage(e) {
 }
 export function syncStage(e) { if (e.status !== 'delivered') e.status = stage(e); e.updatedAt = stamp(); }
 function invalidateReviews(e, reason) { if (e.reviews.length) audit(e, 'Review approvals invalidated', 'System', { reason }); e.reviews = []; }
-export function saveAnswer(e, person, raw, actor = person.name) {
+
+// Every answered response is elicited into a detailed version. The original wording is kept
+// verbatim; the detailed statement explicitly names what still needs confirmation.
+export function elaborateFor(question, person, text, priority) {
+  const phase = PHASES[question.phaseIndex];
+  return elaborateGuided({ question: question.question, answer: text, phase, person, priority });
+}
+
+export function saveAnswer(e, person, raw, actor = person.name, elaboration = null) {
   assert(e.status !== 'delivered', 'This handoff is locked. Create a new change engagement for further changes.', 409);
   assert(person.status !== 'completed', 'This interview is already complete. Ask the BA to reopen a specific question.', 409);
   const input = answerInput.parse(raw); version(e, input.expectedVersion);
   const q = person.pendingQuestion || nextQuestion(e, person);
   assert(q && q.id === input.questionId, 'This question has changed. Refresh the interview.', 409);
-  const response = { id: `EV-${randomBytes(5).toString('hex').toUpperCase()}`, questionId: q.id, questionKey: q.key, question: q.question, phaseIndex: q.phaseIndex, phase: PHASES[q.phaseIndex].name, text: input.text, disposition: input.disposition, priority: input.priority, at: stamp(), followup: Boolean(q.followup), reopened: Boolean(q.reopened), engine: q.engine || 'guided', recordedBy: actor };
+  const suggestion = q.prioritySuggestion || suggestPriority(q, person);
+  const priority = input.priority || suggestion.value;
+  const prioritySource = input.priority && input.priority !== suggestion.value ? 'stakeholder' : 'auto';
+  const detail = elaboration || (input.disposition === 'answered' && input.text.trim() ? elaborateFor(q, person, input.text, priority) : null);
+  const response = {
+    id: `EV-${randomBytes(5).toString('hex').toUpperCase()}`, questionId: q.id, questionKey: q.key, question: q.question,
+    phaseIndex: q.phaseIndex, phase: PHASES[q.phaseIndex].name, text: input.text, disposition: input.disposition,
+    priority, prioritySource, priorityReason: suggestion.reason,
+    detail: detail?.text || '', detailGaps: detail?.gaps || [], detailEngine: detail?.engine || 'none', detailEditedBy: null,
+    at: stamp(), followup: Boolean(q.followup), reopened: Boolean(q.reopened), engine: q.engine || 'guided', recordedBy: actor,
+  };
   person.responses.push(response); person.pendingQuestion = null; person.status = 'interviewing';
+  person.startedAt ||= stamp(); person.lastSeenAt = stamp();
+  person.activity = { status: 'active', note: '', updatedAt: stamp(), breakUntil: null };
   if (q.reopened) { const request = person.reopenedQuestions.find(item => item.id === q.id); if (request) request.answered = true; }
-  audit(e, 'Interview response saved', actor, { stakeholderId: person.id, responseId: response.id, phase: response.phase, disposition: response.disposition });
+  audit(e, 'Interview response saved and elicited into a detailed statement', actor, { stakeholderId: person.id, responseId: response.id, phase: response.phase, disposition: response.disposition, detailEngine: response.detailEngine });
   invalidateReviews(e, 'New interview evidence'); syncStage(e); return response;
 }
+
+export function saveDetail(e, person, responseId, raw) {
+  assert(e.status !== 'delivered', 'Handoff is locked.', 409);
+  const input = detailInput.parse(raw); version(e, input.expectedVersion);
+  const response = person.responses.find(r => r.id === responseId);
+  assert(response, 'That response is not part of your interview.', 404);
+  assert(response.detail, 'This response has no detailed version to edit.', 409);
+  response.detail = input.text; response.detailEngine = 'stakeholder-edited'; response.detailEditedBy = person.name; response.detailEditedAt = stamp();
+  audit(e, 'Stakeholder refined the detailed version of an answer', person.name, { stakeholderId: person.id, responseId });
+  invalidateReviews(e, 'Detailed evidence refined'); syncStage(e); return response;
+}
+
 export function completeInterview(e, person, expectedVersion, confirmed, actor = person.name) {
   version(e, expectedVersion); assert(confirmed === true, 'Confirm the summary before completing your interview.');
   assert(!nextQuestion(e, person), 'Answer or explicitly mark all remaining questions before completing.', 409);
   assert(person.status !== 'completed', 'Interview is already complete.', 409);
   person.status = 'completed'; person.summaryConfirmed = true; person.completedAt = stamp(); person.pendingQuestion = null;
+  person.lastSeenAt = stamp(); person.activity = { status: 'completed', note: '', updatedAt: stamp(), breakUntil: null };
   audit(e, 'Stakeholder confirmed and completed interview', actor, { stakeholderId: person.id, responses: person.responses.length });
   if (allInterviewsComplete(e) && !e.validationPrepared) prepareValidation(e);
   syncStage(e);
@@ -74,7 +124,7 @@ export function prepareValidation(e) {
   const keys = ['success-metric', 'data-classification', 'release-constraint', 'priority'];
   for (const key of keys) {
     const answers = e.stakeholders.map(p => ({ person: p, response: p.responses.filter(r => r.questionKey === key && r.disposition === 'answered').at(-1) })).filter(x => x.response);
-    const distinct = new Set(answers.map(x => norm(x.response.text)));
+    const distinct = new Set(answers.map(x => norm(x.response.detail || x.response.text)));
     if (distinct.size > 1) {
       const source = answers[0]; const target = targetFor(e, source.person, key === 'data-classification' ? 'security' : key === 'release-constraint' ? 'technical' : 'business');
       addCheck(e, target, source.person, 'conflict', key, `Different perspectives were recorded for ${key.replaceAll('-', ' ')}. Review the attributed statements below and confirm the authoritative position, evidence, and any exceptions. Do not assume either statement is correct.\n\n${answers.map(x => `${x.person.name} (${x.person.function}): ${x.response.text}`).join('\n\n')}`, answers.map(x => x.response.id));
@@ -109,11 +159,14 @@ export function reopenInterview(e, person, question, expectedVersion) {
   assert(e.status !== 'delivered', 'Handoff is locked.', 409); version(e, expectedVersion); assert(question.trim().length >= 15 && question.length <= 1200, 'Use a specific clarification question (15–1,200 characters).');
   e.validationHistory.push(...e.validations.map(v => ({ ...v, archivedAt: stamp() }))); e.validations = []; e.validationPrepared = false;
   person.status = 'interviewing'; person.summaryConfirmed = false; person.completedAt = null; person.pendingQuestion = null;
-  person.reopenedQuestions.push({ id: `RQ-${randomBytes(4).toString('hex').toUpperCase()}`, question: question.trim(), key: 'ba-clarification', phaseIndex: 9, phase: PHASES[9].name, hint: 'Your BA requested this clarification. Previous answers are retained.', suggestions: ['I can confirm the original answer', 'Here is a correction with evidence', 'A specialist needs to confirm', 'This remains an open decision', 'The scope should be adjusted'], reopened: true });
+  person.activity = { status: 'active', note: 'BA requested a clarification', updatedAt: stamp(), breakUntil: null };
+  person.reopenedQuestions.push({ id: `RQ-${randomBytes(4).toString('hex').toUpperCase()}`, question: question.trim(), key: 'ba-clarification', phaseIndex: 9, phase: PHASES[9].name, hint: 'Your BA requested this clarification. Previous answers are retained.', suggestions: ['I can confirm the original answer with the evidence I already hold.', 'Here is a correction, including what changed and why.', 'A specialist needs to confirm this before it is treated as agreed.', 'This remains an open decision and needs a named owner.', 'The scope should be adjusted as a result of this clarification.'], reopened: true });
   invalidateReviews(e, 'Interview reopened'); audit(e, 'Interview reopened for clarification', 'BA lead', { stakeholderId: person.id }); syncStage(e);
 }
 export function saveReview(e, raw) {
   assert(e.status !== 'delivered', 'Handoff is locked.', 409); const input = reviewInput.parse(raw); version(e, input.expectedVersion);
+  const areas = reviewAreas(e);
+  assert(areas.includes(input.area), input.area === 'change' ? 'People and adoption review is only available when change management is enabled for this engagement.' : 'Unknown review area.', 409);
   assert(allInterviewsComplete(e), 'All stakeholder interviews must be complete before review.', 409);
   assert(e.validationPrepared && e.validations.every(v => v.status === 'resolved'), 'Resolve every cross-functional check before recording approval.', 409);
   e.reviews = e.reviews.filter(r => r.area !== input.area);
@@ -121,20 +174,105 @@ export function saveReview(e, raw) {
   audit(e, `${input.area} review ${input.decision}`, input.reviewer, { notes: input.notes }); syncStage(e);
 }
 export function saveChangePlan(e, raw) {
-  assert(e.status !== 'delivered', 'Handoff is locked.', 409); const input = changePlanInput.parse(raw); version(e, input.expectedVersion);
+  assert(e.status !== 'delivered', 'Handoff is locked.', 409);
+  const cm = changeManagementOf(e);
+  assert(cm.enabled, 'Change management is optional. Enable it for this engagement before recording a change plan.', 409);
+  const input = changePlanInput.parse(raw); version(e, input.expectedVersion);
   const { expectedVersion, ...plan } = input; e.changePlan = plan;
   invalidateReviews(e, 'Change plan updated'); audit(e, 'Prosci-informed change plan updated'); syncStage(e);
 }
+
+// Master setup: change management and every Prosci-related process are optional.
+export function reviewAreas(e) { const cm = changeManagementOf(e); return cm.enabled ? ['business', 'technical', 'security', 'change'] : ['business', 'technical', 'security']; }
+export function requiredReviewAreas(e) { const cm = changeManagementOf(e); return ['business', 'technical', 'security', ...(cm.enabled && cm.changeReview ? ['change'] : [])]; }
+export function setChangeManagement(e, raw) {
+  assert(e.status !== 'delivered', 'Handoff is locked.', 409);
+  const input = changeManagementPatch.parse(raw); version(e, input.expectedVersion);
+  const { expectedVersion, ...patch } = input;
+  e.changeManagement = mergeChangeManagement(e.changeManagement, patch);
+  invalidateReviews(e, 'Change management setup changed');
+  audit(e, e.changeManagement.enabled ? 'Change management enabled for this engagement' : 'Change management disabled for this engagement', 'BA lead', { adkar: Object.keys(e.changeManagement.adkar).filter(k => e.changeManagement.adkar[k]), phases: Object.keys(e.changeManagement.phases).filter(k => e.changeManagement.phases[k]), changeReview: e.changeManagement.changeReview });
+  syncStage(e); return e.changeManagement;
+}
+
+// Invite another stakeholder at any time. Their interview runs in parallel with the others.
+export function addStakeholder(e, raw, occupied = [], settings = defaultWorkspaceSettings()) {
+  assert(e.status !== 'delivered', 'This handoff is locked. Create a new change engagement for further changes.', 409);
+  assert(e.stakeholders.length < 12, 'A single engagement supports at most 12 stakeholders.', 409);
+  const input = stakeholderAddInput.parse(raw);
+  const { sessionMinutes, ...person } = input;
+  const minutes = sessionMinutes || e.sessionMinutes;
+  const parallel = (e.interviewSettings?.parallelSittings ?? settings?.interview?.parallelSittings ?? true) !== false;
+  const busy = parallel ? occupied : [...occupied, ...e.stakeholders.flatMap(p => p.schedule)];
+  const startDate = e.startDate && e.startDate >= today() ? e.startDate : today();
+  const [scheduled] = scheduleRoster([{ ...person, id: randomUUID() }], startDate, minutes, busy);
+  const created = { ...scheduled, ...personDefaults(), tokenHash: '' };
+  e.stakeholders.push(created);
+  if (e.validationPrepared || e.validations.length) { e.validationHistory.push(...e.validations.map(v => ({ ...v, archivedAt: stamp() }))); e.validations = []; e.validationPrepared = false; }
+  invalidateReviews(e, 'A stakeholder was added to the engagement');
+  const token = issueInvite(e, created);
+  audit(e, 'Stakeholder added and invited to a parallel interview', 'BA lead', { stakeholderId: created.id, function: created.function, parallel });
+  syncStage(e);
+  return { person: created, token };
+}
+
+export function setTimeBudget(e, person, raw) {
+  assert(e.status !== 'delivered', 'Handoff is locked.', 409);
+  const input = timeBudgetInput.parse(raw); version(e, input.expectedVersion);
+  person.timeBudget = { minutes: input.minutes, setAt: stamp() };
+  audit(e, 'Stakeholder recorded the time available for the interview', person.name, { stakeholderId: person.id, minutes: input.minutes });
+  syncStage(e); return person.timeBudget;
+}
+
+// Heartbeats and pause/break state. These must not change the record revision, otherwise a
+// stakeholder's next answer would fail its version check.
+export function recordActivity(e, person, raw) {
+  assert(e.status !== 'delivered', 'Handoff is locked.', 409);
+  const input = activityInput.parse(raw || {});
+  const at = stamp();
+  if (input.status === 'paused') {
+    person.activity = { status: 'paused', note: input.note, updatedAt: at, breakUntil: null };
+    audit(e, 'Interview paused by stakeholder; reminders suspended', person.name, { stakeholderId: person.id });
+  } else if (input.status === 'on-break') {
+    person.activity = { status: 'on-break', note: input.note, updatedAt: at, breakUntil: new Date(Date.now() + input.minutes * 60000).toISOString() };
+    audit(e, `Stakeholder on a ${input.minutes} minute break; reminders suspended`, person.name, { stakeholderId: person.id });
+  } else {
+    person.lastSeenAt = at;
+    person.activity = { status: 'active', note: '', updatedAt: at, breakUntil: null };
+  }
+  return person.activity;
+}
+
+export function sendReminder(e, person, raw, actor = 'BA lead') {
+  assert(e.status !== 'delivered', 'Handoff is locked.', 409);
+  const input = reminderInput.parse(raw || {}); version(e, input.expectedVersion);
+  assert(person.status !== 'completed', 'That stakeholder has already completed their interview.', 409);
+  const progress = stakeholderProgress(e, person);
+  const message = input.message.trim() || reminderMessage(person, progress);
+  const reminder = buildReminder(person, 'manual', message);
+  person.reminders ||= []; person.reminders.push(reminder);
+  audit(e, 'Reminder sent to a stakeholder', actor, { stakeholderId: person.id, reminderId: reminder.id, kind: 'manual' });
+  syncStage(e); return reminder;
+}
+
 export function gateReasons(e) {
   const reasons = [];
+  const cm = changeManagementOf(e);
   const incomplete = e.stakeholders.filter(p => p.status !== 'completed' || !p.summaryConfirmed);
   if (incomplete.length) reasons.push(`${incomplete.length} stakeholder interview${incomplete.length === 1 ? '' : 's'} not complete`);
   if (!e.validationPrepared) reasons.push('Cross-functional verification has not run');
   const checks = e.validations.filter(v => v.status !== 'resolved').length;
   if (checks) reasons.push(`${checks} verification check${checks === 1 ? '' : 's'} awaiting an answer or BA resolution`);
-  for (const area of ['business', 'technical', 'security', 'change']) if (!e.reviews.some(r => r.area === area && r.decision === 'approved')) reasons.push(`${area[0].toUpperCase() + area.slice(1)} review approval required`);
-  if (!e.changePlan.sponsor.trim() || !e.changePlan.impact.trim()) reasons.push('Change sponsor and impact assessment required');
-  for (const [key, value] of Object.entries(e.changePlan.adkar)) if (!value.action.trim() || !value.owner.trim() || !value.measure.trim()) reasons.push(`ADKAR ${key}: action, owner, and measure required`);
+  for (const area of requiredReviewAreas(e)) if (!e.reviews.some(r => r.area === area && r.decision === 'approved')) reasons.push(`${area[0].toUpperCase() + area.slice(1)} review approval required`);
+  // Optional Prosci-informed change management: only enforced when the master setup is enabled.
+  if (cm.enabled) {
+    if (cm.phases.prepare && (!e.changePlan.sponsor.trim() || !e.changePlan.impact.trim())) reasons.push('Change sponsor and impact assessment required');
+    for (const key of ADKAR_KEYS) {
+      if (!cm.adkar[key]) continue;
+      const value = e.changePlan.adkar[key];
+      if (!value.action.trim() || !value.owner.trim() || !value.measure.trim()) reasons.push(`ADKAR ${key}: action, owner, and measure required`);
+    }
+  }
   return reasons;
 }
 export function requirementsFor(e) {
@@ -142,13 +280,26 @@ export function requirementsFor(e) {
     const responses = e.stakeholders.flatMap(p => p.responses.filter(r => r.phaseIndex === index).map(r => ({ ...r, stakeholderId: p.id, stakeholder: p.name, function: p.function })));
     const substantive = responses.filter(r => r.disposition === 'answered' || r.disposition === 'out-of-scope');
     if (!substantive.length) return null;
-    const priority = substantive.filter(r => r.priority).at(-1)?.priority || 'Should have';
+    const priority = strongestPriority(substantive.map(r => r.priority));
     const unknown = responses.filter(r => ['unknown', 'skipped'].includes(r.disposition)).length;
-    const coverage = Math.max(1, Math.min(10, 3 + Math.min(substantive.length, 4) + (substantive.some(r => /\d/.test(r.text)) ? 2 : 0) + (substantive.some(r => /owner|approve|accountable/i.test(r.text)) ? 1 : 0) - unknown));
-    return { id: `REQ-${String(index + 1).padStart(3, '0')}`, phaseIndex: index, title: phase.name, statements: substantive, evidenceIds: responses.map(r => r.id), priority, scope: substantive.some(r => r.disposition === 'out-of-scope') ? 'Boundary review' : 'Proposed in scope', coverage, unknown, acceptanceCriteria: [] };
+    const detailed = substantive.filter(r => r.detail).length;
+    const coverage = Math.max(1, Math.min(10, 3 + Math.min(substantive.length, 4) + (substantive.some(r => /\d/.test(r.text)) ? 2 : 0) + (substantive.some(r => /owner|approve|accountable/i.test(r.text)) ? 1 : 0) + (detailed ? 1 : 0) - unknown));
+    return { id: `REQ-${String(index + 1).padStart(3, '0')}`, phaseIndex: index, title: phase.name, statements: substantive, evidenceIds: responses.map(r => r.id), priority, scope: substantive.some(r => r.disposition === 'out-of-scope') ? 'Boundary review' : 'Proposed in scope', coverage, unknown, detailed, acceptanceCriteria: [] };
   }).filter(Boolean);
 }
 export function summary(e) {
   const completed = e.stakeholders.filter(p => p.status === 'completed').length;
-  return { id: e.id, title: e.title, type: e.type, owner: e.owner, problem: e.problem, status: stage(e), isExample: e.isExample, createdAt: e.createdAt, updatedAt: e.updatedAt, revision: e.revision, stakeholderCount: e.stakeholders.length, stakeholderNames: e.stakeholders.map(p => p.name), completed, responses: e.stakeholders.reduce((n, p) => n + p.responses.length, 0), requirementCount: requirementsFor(e).length, openChecks: e.validations.filter(v => v.status !== 'resolved').length, solution: e.solutionSnapshot?.name || null, nextSitting: e.stakeholders.flatMap(p => p.status === 'completed' ? [] : p.schedule.filter(slot => slot.startUtc >= new Date().toISOString())).sort((a, b) => a.startUtc.localeCompare(b.startUtc))[0] || null, gateReasons: gateReasons(e) };
+  const progress = e.stakeholders.map(p => stakeholderProgress(e, p));
+  return {
+    id: e.id, title: e.title, type: e.type, owner: e.owner, problem: e.problem, status: stage(e), isExample: e.isExample,
+    createdAt: e.createdAt, updatedAt: e.updatedAt, revision: e.revision, stakeholderCount: e.stakeholders.length,
+    stakeholderNames: e.stakeholders.map(p => p.name), completed,
+    responses: e.stakeholders.reduce((n, p) => n + p.responses.length, 0), requirementCount: requirementsFor(e).length,
+    openChecks: e.validations.filter(v => v.status !== 'resolved').length, solution: e.solutionSnapshot?.name || null,
+    changeManagementEnabled: changeManagementOf(e).enabled,
+    behind: progress.filter(p => p.behind).length, paused: progress.filter(p => p.activity.status === 'paused' || p.activity.status === 'on-break').length,
+    nextSitting: e.stakeholders.flatMap(p => p.status === 'completed' ? [] : p.schedule.filter(slot => slot.startUtc >= new Date().toISOString())).sort((a, b) => a.startUtc.localeCompare(b.startUtc))[0] || null,
+    gateReasons: gateReasons(e),
+  };
 }
+export { PART_PHASES, interviewProgress, changeManagementOf };

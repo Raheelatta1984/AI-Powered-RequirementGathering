@@ -2,6 +2,8 @@
 
 ## Automated suites
 
+`tests/v13.test.mjs` covers detailed elicitation and refinement, auto-adjusted MoSCoW, optional change management (enable/disable and per-process toggles), parallel stakeholder invitations, time budgets, pause/break reminder suppression, the reminder sweep, changelog parsing, workspace settings, and the new HTTP endpoints. The browser suite also exercises the time-budget prompt, refining an expanded answer, the suggestion-submit arrow, enabling change management from the engagement, the live progress board, inviting a stakeholder mid-engagement, and the **What's new** tab.
+
 `npm test` uses Node’s built-in test runner. It covers:
 
 - Ten-phase completion, unique question IDs, adaptive follow-up cap, explicit unknowns.
